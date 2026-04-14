@@ -3,7 +3,13 @@
 ![Version 1.1.0](https://img.shields.io/badge/Version-1.1.0-green?style=for-the-badge) ![Intermediate Deployment](https://img.shields.io/badge/Deployment-Intermediate-blue?style=for-the-badge)
 
 An enterprise-grade n8n automation designed to ingest, classify, and route operational emails using AI, featuring asynchronous Human-in-the-Loop (HITL) approval gates via Slack and professional browser-based feedback loops.
+## Architecture Overview
 
+**Visual Snapshot of Nexus Operations Hub v1.1.0**
+![Snapshot of the triple-lane n8n workflow canvas showing automated email triage logic.](![workflow-overview](https://github.com/user-attachments/assets/b2fd3959-a06e-4bb7-8978-e93f43081fd3)
+)
+
+This workflow is built as a white-label architecture...
 > [!IMPORTANT]
 > **Deployment Expectation:** This workflow is a **100% no-code** architecture. However, because it connects directly to enterprise tools, the initial setup requires generating API credentials for Google Workspace (OAuth2), Slack, and OpenAI. If you are comfortable navigating developer API dashboards, deployment takes roughly 15 minutes.
 
