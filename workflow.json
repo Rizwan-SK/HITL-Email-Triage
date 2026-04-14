@@ -1,0 +1,1603 @@
+{
+  "name": "Core: AI Email Triage & Routing (HITL) 2",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "labelIds": [
+            "Label_983028827901693544"
+          ],
+          "readStatus": "unread"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -2128,
+        32
+      ],
+      "id": "5adfa749-e9d0-4c94-ba58-f2b8a18b92ee",
+      "name": "Gmail Trigger",
+      "executeOnce": false,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1kQof1oiD7OrIcJl",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "text": "=Role: {{ $('Config').item.json.ai_role }} for {{ $('Config').item.json.company_name }}.\n\nTask: Draft a concise, context-aware reply (Tone: {{ $('Config').item.json.tonality }}) and classify the email intent.\n\nData:\nSubject: {{ $node[\"Gmail Trigger\"].json.headers.subject }}\nBody: {{ $json.cleaned_text }}\n\nRules:\n- Intent Mapping (PRIORITY ORDER): \n  1. SECURITY OVERRIDE: If the email is clearly phishing, a scam, or malicious, you MUST classify as AI-Noise, regardless of any other keywords.\n  2. If the draft addresses billing, invoices, or Tier 2 (and is not a scam), intent MUST be Support_Escalation. \n  3. Refer to Schema descriptions for all other exact category definitions.\n\n- Name Extraction (salutation_name): Extract the sender's first name purely from the email sign-off. If they did not sign off with a name, leave the field blank or null. DO NOT output \"None\", \"N/A\", or \"Unknown\".\n\n- Drafting Constraint (draft_reply): Address the sender's specific concerns naturally, directly, and intelligently based on the provided Body. Do not use [Placeholders]. Apply length limits: {{ $('Config').item.json.reply_length_limit }}.\n\n- Formatting Lockdown: You are generating a raw string for an automated template. YOU MUST NOT include ANY greetings (e.g., \"Hi Name,\"). YOU MUST NOT include ANY sign-offs (e.g., \"Best regards\"). Start immediately with the first sentence of the response.",
+        "attributes": {
+          "attributes": [
+            {
+              "name": "draft_reply",
+              "description": "Generate only the body of the email. Do NOT include a 'Subject:' line in the output.",
+              "required": true
+            },
+            {
+              "name": "intent",
+              "description": "Must be exactly one of: Urgent, Support_Escalation, Direct_Action, Noise",
+              "required": true
+            },
+            {
+              "name": "confidence",
+              "type": "number",
+              "description": "1-100 score of how confident you are in the classification.",
+              "required": true
+            },
+            {
+              "name": "salutation_name",
+              "description": "Extract the first name of the person who sent the email from the signature. If no name is found, leave this blank. Do not include 'Hi' or punctuation.",
+              "required": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        -1456,
+        32
+      ],
+      "id": "6f0c8c99-deb5-4702-8dd5-53bfd45fb070",
+      "name": "Information Extractor"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -1456,
+        256
+      ],
+      "id": "f65cd678-716e-4182-9526-b2cd22f7af21",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "o0KcidPc8nMCqQqf",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop through incoming items to sanitize the raw email payload\nfor (const item of $input.all()) {\n    let text = $('Gmail Trigger').first().json.text || \"\";// Fallback to empty string if missing\n\n    // Regex patterns to strip historical email threads (LLM Token Optimization)\n    const replyPatterns = [\n        /^On.*wrote:/m,       // Standard English reply header\n        /^Am.*schrieb:/m,     // Standard German reply header (DACH region support)\n        /---Original Message---/i,\n        /________________________________/\n    ];\n\n    let cleanedText = text;\n\n    // Isolate the freshest message by truncating at the first reply pattern\n    for (const pattern of replyPatterns) {\n        const match = text.match(pattern);\n        if (match && match.index > 0) {\n            cleanedText = text.substring(0, match.index);\n            break; \n        }\n    }\n\n    // Explicitly set the sanitized payload for the downstream LLM node\n    item.json.cleaned_text = cleanedText.trim();\n}\n\n// Return the modified array\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1680,
+        32
+      ],
+      "id": "f5fbef25-bbc7-4850-9898-144ffe1bbbdf",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Gmail Trigger').item.json.id }}",
+        "labelIds": [
+          "Label_5606232156301171392"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -320,
+        1216
+      ],
+      "id": "0c107182-9cb4-457b-99cc-53eeef41297a",
+      "name": "Add AI-Noise Label",
+      "webhookId": "803e2b36-e494-41c6-8c7d-c7133ba13d25",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1kQof1oiD7OrIcJl",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.output.intent }}",
+                    "rightValue": "Urgent",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "34cbe11f-148d-4667-97b8-13a64cfd8733"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Urgent"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0243a937-3ba8-4f3f-923f-59778d202fb4",
+                    "leftValue": "={{ $json.output.intent }}",
+                    "rightValue": "Support_Escalation",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Support Escalation"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "4e88e834-c130-40aa-809a-82e65085fdf1",
+                    "leftValue": "={{ $json.output.intent }}",
+                    "rightValue": "Direct_Action",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Direct Action"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "917e6a4a-29cd-4eac-988d-e60c95f535fe",
+                    "leftValue": "={{ $json.output.intent }}",
+                    "rightValue": "Noise",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Noise"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -896,
+        0
+      ],
+      "id": "008268a9-70f4-4a5f-ac98-1630e21a43ce",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "511b1e14-8e36-47dc-8804-cee9ce348adb",
+              "name": "company_name",
+              "value": "Nexus Operations Hub",
+              "type": "string"
+            },
+            {
+              "id": "e6a3dbce-c4a7-49c7-ba9f-aab5ccadbebe",
+              "name": "intent_categories",
+              "value": "Urgent, Support_Escalation, Direct_Action, Noise",
+              "type": "string"
+            },
+            {
+              "id": "4cefea91-ac53-4851-888e-9a0ccee1b82d",
+              "name": "ai_role",
+              "value": "L1 Automated Triage & Support System",
+              "type": "string"
+            },
+            {
+              "id": "fe05da73-d4e4-4bca-a57a-2cc2e601a860",
+              "name": "tonality",
+              "value": "Neutral, highly professional, concise, and solution-oriented. Avoid emotive language and focus strictly on operational resolution.\n",
+              "type": "string"
+            },
+            {
+              "id": "da85c736-3397-476e-ba0f-c37a4f5c6967",
+              "name": "reply_length_limit",
+              "value": "Draft a maximum of 5 sentences. Combine the acknowledgment and the action step into a single, highly efficient sentence.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1904,
+        32
+      ],
+      "id": "2aa081a4-bdc7-4593-8ecb-900de2f6b2a0",
+      "name": "Config"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AK1G2THJA",
+          "mode": "list",
+          "cachedResultName": "triage-approvals"
+        },
+        "text": "=⚠️ *AI Triage: Escalation Required*\n\n*From:* {{ $('Gmail Trigger').first().json.from.value[0].address }}\n*Subject:* {{ $('Gmail Trigger').first().json.headers.subject.replace(/^Subject:\\s*/i, '') }}\n*Intent Classified As:* `{{ $('Information Extractor').first().json.output.intent }}` (Confidence: {{ $('Information Extractor').first().json.output.confidence }}%)\n\n*Original Email:*\n> {{ $('Code in JavaScript').first().json.cleaned_text.replace(/\\n/g, '\\n> ') }}\n\n*AI Drafted Reply:*\n> {{ $('Information Extractor').first().json.output.draft_reply.replace(/\\n/g, '\\n> ') }}\n> Best regards,\n> The {{ $('Config').item.json.company_name }} Team\n\n👇 *What would you like to do?*\n\n<{{ $execution.resumeUrl }}?action=approve|✅ Approve & Send>\n<{{ $execution.resumeUrl }}?action=reject|❌ Reject & Reply Manually (Opens Gmail)>\n<{{ $execution.resumeUrl }}?action=discard|🗑️ Discard & Archive>",
+        "otherOptions": {
+          "mrkdwn": true,
+          "unfurl_links": false,
+          "unfurl_media": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -160,
+        -368
+      ],
+      "id": "8258016f-d39d-4e85-892b-b0071bb79608",
+      "name": "Slack: Escalation Approval",
+      "webhookId": "445cf73f-4b73-41c4-8dcc-a32b2ab68f6f",
+      "credentials": {
+        "slackApi": {
+          "id": "oufrHwXkxxooHkTA",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AK1G2THJA",
+          "mode": "list",
+          "cachedResultName": "triage-approvals"
+        },
+        "text": "=🟢 *AI Triage: Direct Action Drafted*\n\n*From:* {{ $('Gmail Trigger').first().json.from.value[0].address }}\n*Subject:* {{ $('Gmail Trigger').first().json.headers.subject.replace(/^Subject:\\s*/i, '') }}\n*Intent Classified As:* `{{ $('Information Extractor').first().json.output.intent }}` (Confidence: {{ $('Information Extractor').first().json.output.confidence }}%)\n\n*Original Email:*\n> {{ $('Code in JavaScript').first().json.cleaned_text.replace(/\\n/g, '\\n> ') }}\n\n*AI Drafted Reply:*\n> {{ $('Information Extractor').first().json.output.draft_reply.replace(/\\n/g, '\\n> ') }}\n>\n> Best regards,\n> The {{ $('Config').item.json.company_name }} Team\n\n👇 *What would you like to do?*\n\n<{{ $execution.resumeUrl }}?action=approve|✅ Approve & Send>\n<{{ $execution.resumeUrl }}?action=reject|❌ Reject & Reply Manually (Opens Gmail)>\n<{{ $execution.resumeUrl }}?action=discard|🗑️ Discard & Archive>",
+        "otherOptions": {
+          "mrkdwn": true,
+          "unfurl_links": false,
+          "unfurl_media": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -160,
+        432
+      ],
+      "id": "c0880f5b-c98e-454d-be53-413e26c32aa0",
+      "name": "Slack: Resolution Approval",
+      "webhookId": "445cf73f-4b73-41c4-8dcc-a32b2ab68f6f",
+      "credentials": {
+        "slackApi": {
+          "id": "oufrHwXkxxooHkTA",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.query.action }}",
+                    "rightValue": "approve",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "93b550af-65b1-4f90-ae74-579e69427825"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Approve"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "280bf7f7-6ea3-4ae6-aeb6-bb6b91d98425",
+                    "leftValue": "={{ $json.query.action }}",
+                    "rightValue": "reject",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Reject and Reply"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0a3e206f-095d-4e12-a333-8fada087fd29",
+                    "leftValue": "={{ $json.query.action }}",
+                    "rightValue": "discard",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Discard"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        304,
+        -384
+      ],
+      "id": "c0b524f8-75fb-46c4-83e8-11cf484f0787",
+      "name": "Switch: Final Routing"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "a538c4c3-0588-4f61-b35e-dfa0d835345c",
+                    "leftValue": "={{ $json.query.action }}",
+                    "rightValue": "discard",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Discard"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "512e5d30-f670-4f24-b200-a1e84b3f7794",
+                    "leftValue": "={{ $json.query.action }}",
+                    "rightValue": "reject",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Reject and Reply"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.query.action }}",
+                    "rightValue": "approve",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "93b550af-65b1-4f90-ae74-579e69427825"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Approve"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        304,
+        416
+      ],
+      "id": "947f6956-4416-46f3-9966-55afd5cc22da",
+      "name": "Switch: Action Decision"
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        192,
+        -1312
+      ],
+      "id": "bfc079e7-9390-486f-bfe3-2a857accf601",
+      "name": "Wait:Urgent Decision",
+      "webhookId": "8bf16c88-6efb-4cfc-b051-4581cf9ce644"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.query.action }}",
+                    "rightValue": "approve",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "f87215ef-b874-4132-80ba-1bac39046fa4"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Approve"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "09602460-747a-4bf5-8281-27f3c78d2b0d",
+                    "leftValue": "={{ $json.query.action }}",
+                    "rightValue": "reject",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Reject"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "91ef09ad-b814-4219-a4a3-cb73db66a777",
+                    "leftValue": "={{ $json.query.action }}",
+                    "rightValue": "discard",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Discard"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        -1328
+      ],
+      "id": "dcaf20a2-dd0d-4242-99b8-e34df4897dcb",
+      "name": "Switch:Urgent Decision"
+    },
+    {
+      "parameters": {
+        "content": "### ⚙️ 1. Dynamic Config & Sanitization\n\n* **White-Label Architecture:** Do not edit AI prompts directly. Update the JSON variables in the `Config` node (Company, Tone, Role, Intents, \nReply Length). The engine adapts instantly.\n\n* **Data Sanitization:** The JS node strips HTML and metadata to conserve LLM tokens and prevent hallucinations.",
+        "height": 272,
+        "width": 304,
+        "color": "#1A2B3C"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2016,
+        -272
+      ],
+      "typeVersion": 1,
+      "id": "af525914-fb71-420e-ab52-a03ef589eadc",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "### 🧠 2. AI Triage & Routing Matrix\n* **Classification:** The LLM evaluates the sanitized payload against strict Intent Definitions.\n* **Routing:** The primary Switch acts as a traffic controller, directing the payload to one of four parallel operational tracks based on the AI's decision.",
+        "height": 192,
+        "width": 320,
+        "color": "#2D1B3E"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1520,
+        -192
+      ],
+      "typeVersion": 1,
+      "id": "8f99505d-a4ca-4091-a166-fd751e240ff3",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "### 🚨 3A. Urgent Alert Track (Priority 1)\nBypasses standard drafting for an immediate Slack alert. Uses a **HITL Sandwich** (Wait + Webhook) to pause execution.\n* **✅ Approve:** Auto-sends a pre-configured emergency acknowledgment.\n* **❌ Reject:** Reaches into the inbox and flags the email with a custom red label (`URGENT: Manual Reply Needed`) for immediate human intervention.",
+        "height": 256,
+        "width": 320,
+        "color": "#3D1414"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -304,
+        -1584
+      ],
+      "typeVersion": 1,
+      "id": "014dea7b-49a9-44fc-aeb2-1b25cfd2c34b",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "### 🤝 3B. Asynchronous HITL (Escalation & Action)\nThe AI drafts a context-aware, tonally accurate response. Execution is paused pending Operations Manager review via interactive Slack buttons.\n* **✅ Approve:** Dynamically injects the AI draft into a threaded Gmail reply.\n* **🗑️ Discard:** Silently archives the ticket (removes INBOX/UNREAD labels), keeping the queue at inbox-zero.",
+        "height": 272,
+        "width": 352,
+        "color": "#14322D"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -304,
+        -64
+      ],
+      "typeVersion": 1,
+      "id": "373d030a-d9c5-418c-ae69-234508366885",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "### 🗑️ 3C. Auto-Archive (Noise/Spam)\nAutomatically intercepts vendor pitches, newsletters, and OOO replies.\n* **Action:** Tags the email with `AI-Noise`, marks it as read, and archives it entirely without ever pinging human staff.",
+        "width": 304,
+        "color": "#28282D"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -304,
+        880
+      ],
+      "typeVersion": 1,
+      "id": "da675175-91d8-494a-a39e-c068498bbcdf",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "operation": "removeLabels",
+        "messageId": "={{ $('Gmail Trigger').item.json.id }}",
+        "labelIds": [
+          "INBOX",
+          "UNREAD"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -32,
+        1216
+      ],
+      "id": "f8f6c11e-dd5f-4a60-a514-f626ef855e6f",
+      "name": "Remove Unread and Inbox Label",
+      "webhookId": "638cb8c7-1e88-46ee-927f-dabce6ca828d",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1kQof1oiD7OrIcJl",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Gmail Trigger').item.json.threadId }}",
+        "message": "={{ \n'Hi ' + \n(\n  ($('Information Extractor').first().json.output.salutation_name) || \n  ($('Gmail Trigger').first().json.from.name ? $('Gmail Trigger').first().json.from.name.split(' ')[0] : null) || \n  'Team'\n) + \n',<br><br>' + \n$('Information Extractor').first().json.output.draft_reply.replace(/\\n/g, '<br>') + \n'<br><br>Best regards,<br>The ' + \n($('Config').item.json.company_name || 'Nexus Operations Hub') + ' Team' \n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1104,
+        -672
+      ],
+      "id": "d21b0bae-2197-4157-91c0-d4a97561abd4",
+      "name": "Send Escalation",
+      "webhookId": "28b27db6-7b60-450a-8fd2-6ed602985468",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1kQof1oiD7OrIcJl",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AK1G2THJA",
+          "mode": "list",
+          "cachedResultName": "triage-approvals"
+        },
+        "text": "=🚨 *AI Triage: URGENT Action Required*\n\n*From:* {{ $('Gmail Trigger').first().json.from.value[0].address }}\n*Subject:* {{ $('Gmail Trigger').first().json.headers.subject.replace(/^Subject:\\s*/i, '') }}\n*Intent Classified As:* `{{ $('Information Extractor').first().json.output.intent }}` (Confidence: {{ $('Information Extractor').first().json.output.confidence }}%)\n\n*Original Email:*\n> {{ $('Code in JavaScript').first().json.cleaned_text.replace(/\\n/g, '\\n> ') }}\n\n*AI Drafted Reply:*\n> Hi {{ $('Information Extractor').first().json.output.salutation_name || 'Team' }},{{ $('Information Extractor').first().json.output.draft_reply.replace(/\\n/g, '\\n> ') }}\n>\n> Best regards,\n> The {{ $('Config').item.json.company_name }} Team\n\n👇 *What would you like to do?*\n\n<{{ $execution.resumeUrl }}?action=approve|✅ Approve & Send>\n<{{ $execution.resumeUrl }}?action=reject|❌ Reject & Reply Manually (Opens Gmail)>\n<{{ $execution.resumeUrl }}?action=discard|🔕 Discard and Archive (Mark as False Alarm)>",
+        "otherOptions": {
+          "mrkdwn": true,
+          "unfurl_links": false,
+          "unfurl_media": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -16,
+        -1312
+      ],
+      "id": "95bbd902-f22a-40ef-a49b-480366797a6c",
+      "name": "Slack: Urgent Decison",
+      "webhookId": "445cf73f-4b73-41c4-8dcc-a32b2ab68f6f",
+      "credentials": {
+        "slackApi": {
+          "id": "oufrHwXkxxooHkTA",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Gmail Trigger').item.json.threadId }}",
+        "message": "={{ \n'Hi ' + \n(\n  ($('Information Extractor').first().json.output.salutation_name) || \n  ($('Gmail Trigger').first().json.from.name ? $('Gmail Trigger').first().json.from.name.split(' ')[0] : null) || \n  'Team'\n) + \n',<br><br>' + \n$('Information Extractor').first().json.output.draft_reply.replace(/\\n/g, '<br>') + \n'<br><br>Best regards,<br>The ' + \n($('Config').item.json.company_name || 'Nexus Operations Hub') + ' Team' \n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1104,
+        -1648
+      ],
+      "id": "f7682e09-201f-4acc-b31e-c40b8e7c14ac",
+      "name": " Send drafted reply (Urgent)",
+      "webhookId": "28b27db6-7b60-450a-8fd2-6ed602985468",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1kQof1oiD7OrIcJl",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "removeLabels",
+        "messageId": "={{ $node[\"Gmail Trigger\"].json.id }}",
+        "labelIds": "={{ [\"INBOX\",\"UNREAD\"] }}"
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        -96
+      ],
+      "id": "ccf8307e-1235-420f-bfd8-5850a73bbae0",
+      "name": "Remove Label From Message",
+      "webhookId": "77ac1027-8fec-40c2-8512-2c570d66093a",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1kQof1oiD7OrIcJl",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        80,
+        432
+      ],
+      "id": "8ba095e1-33f7-4f98-82c2-6b7800e185c0",
+      "name": "Wait: Resolution Route",
+      "webhookId": "0176f8c8-0635-437c-815c-0c8fbdde6258"
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        -368
+      ],
+      "id": "ddc652f4-f066-4702-94e3-396354034bd5",
+      "name": "Wait: Escalation Route",
+      "webhookId": "0176f8c8-0635-437c-815c-0c8fbdde6258"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Preserve the AI's output so the Switch node still works\nconst aiData = $input.first().json;\n\n// Extract the sender's actual email address and the subject safely using optional chaining\nconst toAddress = $('Gmail Trigger').first().json.from?.value?.[0]?.address || \"\";\nlet subject = $('Gmail Trigger').first().json.subject || \"\";\n\n// Extract the RECEIVING email address (your inbox) to force the correct Gmail account\nconst dynamicEmail = $('Gmail Trigger').first().json.to?.value?.[0]?.address || \"\";\n\n// Extract the AI's drafted reply safely (prevents crashing if AI formatting fails)\nconst rawDraft = aiData.output?.draft_reply || \"\"; \n\n// 2. Format the subject line as a Reply\nif (subject && !subject.toLowerCase().startsWith('re:')) {\n  subject = 'Re: ' + subject;\n}\n\n// 3. Clean up the AI Draft Formatting (Fixing the \"Wall of Text\")\n// Convert literal \\n strings into actual line breaks, ensuring it stays a string type\nconst cleanDraft = String(rawDraft).replace(/\\\\n/g, '\\n');\n\n// 4. Generate the smart Gmail Compose URL\nconst baseUrl = `https://mail.google.com/mail/u/${dynamicEmail}/?view=cm&fs=1`;\n\n// Build URL: encode safely, and replace standard breaks (%0A) with Gmail's required breaks (%0D%0A)\nconst rejectUrl = `${baseUrl}&to=${encodeURIComponent(toAddress)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(cleanDraft).replace(/%0A/g, '%0D%0A')}`;\n\n// 5. Output the combined data (Original AI Data + The New URL)\nreturn {\n  ...aiData,\n  reject_url: rejectUrl\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1072,
+        32
+      ],
+      "id": "7f4c33cf-fde7-444c-9815-6fad0481e2ee",
+      "name": "Generate Reject URL"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<div style=\"font-family: sans-serif; padding: 40px; text-align: center;\">\n    <h2 style=\"color: #28a745;\">Approved & Sent ✅</h2>\n    <p>The AI drafted reply has been sent successfully.</p>\n    <p style=\"font-size: 12px; color: #666; margin-top: 20px;\">You may safely close this tab.</p>\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        832,
+        -1648
+      ],
+      "id": "e23209f4-c436-454f-bc1d-bc3807a0bac3",
+      "name": "Urgent: Respond to Approve Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<div style=\"font-family: sans-serif; padding: 40px; text-align: center;\">\n    <h2 style=\"color: #28a745;\">Approved & Sent ✅</h2>\n    <p>The AI drafted reply has been sent successfully.</p>\n    <p style=\"font-size: 12px; color: #666; margin-top: 20px;\">You may safely close this tab.</p>\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        832,
+        -672
+      ],
+      "id": "13c17e7f-fdd4-4e61-8259-a2f032086e80",
+      "name": "Escalation: Respond to Approve Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<div style=\"font-family: sans-serif; padding: 40px; text-align: center;\">\n    <h2 style=\"color: #28a745;\">Approved & Sent ✅</h2>\n    <p>The AI drafted reply has been sent successfully.</p>\n    <p style=\"font-size: 12px; color: #666; margin-top: 20px;\">You may safely close this tab.</p>\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        864,
+        688
+      ],
+      "id": "a0d3fc03-d3ed-4a60-93b7-f337f3fcb585",
+      "name": "Resolution: Respond to Approve Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<div style=\"font-family: sans-serif; padding: 40px; text-align: center;\">\n    <div style=\"font-size: 40px; margin-bottom: 10px;\">🛡️</div>\n    <h2 style=\"color: #6c757d;\">Urgent Status Cleared</h2>\n    <p>This message was marked as a <b>False Alarm</b>.</p>\n    <p>The \"Urgent\" flag has been removed, and the email has been safely archived.</p>\n    <p style=\"font-size: 12px; color: #666; margin-top: 20px;\">Ref ID: {{ $('Gmail Trigger').first().json.id || 'N/A' }}</p>\n    <p style=\"font-size: 12px; color: #666; margin-top: 10px;\">You may now safely close this tab.</p>\n</div>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        832,
+        -960
+      ],
+      "id": "57aef8e6-660b-4054-883e-0096a6c14c39",
+      "name": "Urgent:Respond to Discard Webhook"
+    },
+    {
+      "parameters": {
+        "operation": "removeLabels",
+        "messageId": "={{ $('Gmail Trigger').item.json.id }}",
+        "labelIds": [
+          "Label_983028827901693544",
+          "INBOX"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1104,
+        -960
+      ],
+      "id": "9fc9c03a-46b9-46b7-9e70-c78d49b83873",
+      "name": "Remove label from message",
+      "webhookId": "b87b7511-4af0-4b66-af66-3bc33f8a7428",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1kQof1oiD7OrIcJl",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ \n`<div style=\"font-family: sans-serif; padding: 40px; text-align: center;\">\n    <h2 style=\"color: #d9534f;\">Ticket Rejected 🛑</h2>\n    <p>The automated response was cancelled.</p>\n    <a href=\"${$('Generate Reject URL').first().json.reject_url}\" \n       style=\"display: inline-block; padding: 12px 24px; background-color: #1a73e8; color: white; text-decoration: none; border-radius: 4px; font-weight: bold;\">\n       Click here to Reply Manually in Gmail\n    </a>\n    <p style=\"font-size: 12px; color: #666; margin-top: 20px;\">You can safely close this tab after clicking.</p>\n</div>` \n}}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        832,
+        -1312
+      ],
+      "id": "7a389421-52c5-4494-961c-0e398221f805",
+      "name": "Urgent:Respond to Reject and Reply Webhook"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Gmail Trigger').item.json.id }}",
+        "labelIds": [
+          "Label_7647624638401190922"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1104,
+        -1312
+      ],
+      "id": "d27982ff-4629-4acc-a0c0-bb44e4ee4334",
+      "name": "Adds Manual Reply Tag",
+      "webhookId": "b87b7511-4af0-4b66-af66-3bc33f8a7428",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1kQof1oiD7OrIcJl",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<div style=\"font-family: sans-serif; padding: 40px; text-align: center;\">\n    <h2 style=\"color: #d9534f;\">Escalation Diverted 🛑</h2>\n    <p>The automated response for this <b>Support Escalation</b> was cancelled.</p>\n    <a href=\"{{ $('Generate Reject URL').first().json.reject_url || '#' }}\" style=\"display: inline-block; padding: 12px 24px; background-color: #1a73e8; color: white; text-decoration: none; border-radius: 4px; font-weight: bold;\">\n       Open Gmail to Handle Manually\n    </a>\n    <p style=\"font-size: 12px; color: #666; margin-top: 20px;\">Ref ID: {{ $('Gmail Trigger').first().json.id }}</p>\n</div>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        832,
+        -368
+      ],
+      "id": "2316c0b7-fa66-4506-9f62-a2c3b92e4e9a",
+      "name": "Escalation: Reject Feedback"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<div style=\"font-family: sans-serif; padding: 40px; text-align: center;\">\n    <h2 style=\"color: #6c757d;\">Inquiry Discarded ✅</h2>\n    <p>This thread has been archived. No further action is required.</p>\n    <p style=\"font-size: 12px; color: #666; margin-top: 20px;\">Ref ID: {{ $('Gmail Trigger').first().json.id }}</p>\n</div>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        848,
+        160
+      ],
+      "id": "9f8f1f53-15c3-433f-ac5d-dd5913990d10",
+      "name": "Resolution: Discard Feedback"
+    },
+    {
+      "parameters": {
+        "operation": "removeLabels",
+        "messageId": "={{ $node[\"Gmail Trigger\"].json.id }}",
+        "labelIds": "={{ [\"INBOX\",\"UNREAD\"] }}"
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1136,
+        160
+      ],
+      "id": "0c2e36ca-9760-402b-99e2-e52bc3bccc9b",
+      "name": "Resolution:Remove Label From Message",
+      "webhookId": "77ac1027-8fec-40c2-8512-2c570d66093a",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1kQof1oiD7OrIcJl",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<div style=\"font-family: sans-serif; padding: 40px; text-align: center;\">\n    <h2 style=\"color: #f0ad4e;\">Manual Reply Needed ✍️</h2>\n    <p>You've opted to handle this general inquiry personally.</p>\n    <a href=\"{{ $('Generate Reject URL').first().json.reject_url || '#' }}\" style=\"display: inline-block; padding: 12px 24px; background-color: #1a73e8; color: white; text-decoration: none; border-radius: 4px; font-weight: bold;\">\n       Compose Manual Response\n    </a>\n    <p style=\"font-size: 12px; color: #666; margin-top: 20px;\">Ref ID: {{ $('Gmail Trigger').first().json.id }}</p>\n</div>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        848,
+        432
+      ],
+      "id": "038809ab-c188-4398-ad15-391503e589d5",
+      "name": "Resolution: Reject Feedback"
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Gmail Trigger').item.json.threadId }}",
+        "message": "={{ \n'Hi ' + \n(\n  ($('Information Extractor').first().json.output.salutation_name) || \n  ($('Gmail Trigger').first().json.from.name ? $('Gmail Trigger').first().json.from.name.split(' ')[0] : null) || \n  'Team'\n) + \n',<br><br>' + \n$('Information Extractor').first().json.output.draft_reply.replace(/\\n/g, '<br>') + \n'<br><br>Best regards,<br>The ' + \n($('Config').item.json.company_name || 'Nexus Operations Hub') + ' Team' \n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1136,
+        688
+      ],
+      "id": "fdb0a3b3-e875-4407-a6a8-5c2c42a6b786",
+      "name": "Send Resolution Confirmation",
+      "webhookId": "bcef640e-033a-4e10-8d0f-6ee7d12a7b63",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1kQof1oiD7OrIcJl",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<div style=\"font-family: sans-serif; padding: 40px; text-align: center;\">\n    <h2 style=\"color: #6c757d;\">Escalation Archived 🗑️</h2>\n    <p>This support escalation has been closed and archived without a response.</p>\n    <p style=\"font-size: 12px; color: #666; margin-top: 20px;\">Ref ID: {{ $('Gmail Trigger').first().json.id }}</p>\n</div>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        848,
+        -96
+      ],
+      "id": "c6690add-cef7-480a-a500-e573b50109ce",
+      "name": "Escalation:Respond to Discard Webhook"
+    },
+    {
+      "parameters": {
+        "content": "### ⚠️ CRITICAL: Infrastructure\n**Interactivity requires an active ngrok tunnel.**\nIf Slack returns a `dispatch_failed` error, the tunnel is down or the Webhook URL in the Slack App Dashboard needs updating to match the current ngrok URL.\n",
+        "height": 192,
+        "width": 272,
+        "color": "#854B00"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        0,
+        -720
+      ],
+      "typeVersion": 1,
+      "id": "b9f5c8b0-7b92-4877-96ce-f9c695c77568",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "### 🏷️ Label Dictionary\nThis workflow expects these labels to exist in Gmail. If renamed or deleted, the final nodes will throw an error:\n* `URGENT` (Urgent Lane)\n* `MANUAL_REVIEW` (Reject Paths)\n* `INBOX` / `UNREAD` (Discard Paths)",
+        "height": 192,
+        "width": 336,
+        "color": "#3E5370"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1408,
+        -880
+      ],
+      "id": "44e1f667-a050-4e43-a238-ed10c3b4ff05",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "content": "### 🛡️ UX Capping Strategy\nEvery decision path **MUST** end with a `Respond to Webhook` node **BEFORE** the Gmail action. \n* **Goal:** Provides the user with an instant \"Success\" page.\n* **Result:** Prevents browser hangs if the Gmail API is slow.",
+        "height": 192,
+        "width": 256,
+        "color": "#267365"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        448,
+        -896
+      ],
+      "typeVersion": 1,
+      "id": "c76f7496-dcd5-4428-9127-a8409ee756a2",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "content": "### 🚫 Error Handling (v1.0)\nCurrently, this workflow does not have \"On Error\" branches. If a Gmail or Webhook node fails, the execution will stop silently.\n**Planned v1.1:** Add Error Trigger nodes to alert Slack if an API call fails.",
+        "width": 352,
+        "color": "#962828"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1408,
+        368
+      ],
+      "id": "4ac865b4-6527-4ede-87cb-e9b89bdb9069",
+      "name": "Sticky Note8"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Information Extractor": {
+      "main": [
+        [
+          {
+            "node": "Generate Reject URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add AI-Noise Label": {
+      "main": [
+        [
+          {
+            "node": "Remove Unread and Inbox Label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Slack: Urgent Decison",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack: Escalation Approval",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack: Resolution Approval",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add AI-Noise Label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Escalation Approval": {
+      "main": [
+        [
+          {
+            "node": "Wait: Escalation Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Resolution Approval": {
+      "main": [
+        [
+          {
+            "node": "Wait: Resolution Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: Final Routing": {
+      "main": [
+        [
+          {
+            "node": "Escalation: Respond to Approve Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Escalation: Reject Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Escalation:Respond to Discard Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: Action Decision": {
+      "main": [
+        [
+          {
+            "node": "Resolution: Discard Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resolution: Reject Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resolution: Respond to Approve Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait:Urgent Decision": {
+      "main": [
+        [
+          {
+            "node": "Switch:Urgent Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch:Urgent Decision": {
+      "main": [
+        [
+          {
+            "node": "Urgent: Respond to Approve Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Urgent:Respond to Reject and Reply Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Urgent:Respond to Discard Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Urgent Decison": {
+      "main": [
+        [
+          {
+            "node": "Wait:Urgent Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait: Resolution Route": {
+      "main": [
+        [
+          {
+            "node": "Switch: Action Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait: Escalation Route": {
+      "main": [
+        [
+          {
+            "node": "Switch: Final Routing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Reject URL": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Urgent: Respond to Approve Webhook": {
+      "main": [
+        [
+          {
+            "node": " Send drafted reply (Urgent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escalation: Respond to Approve Webhook": {
+      "main": [
+        [
+          {
+            "node": "Send Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolution: Respond to Approve Webhook": {
+      "main": [
+        [
+          {
+            "node": "Send Resolution Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Urgent:Respond to Discard Webhook": {
+      "main": [
+        [
+          {
+            "node": "Remove label from message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Urgent:Respond to Reject and Reply Webhook": {
+      "main": [
+        [
+          {
+            "node": "Adds Manual Reply Tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adds Manual Reply Tag": {
+      "main": [
+        []
+      ]
+    },
+    "Resolution: Discard Feedback": {
+      "main": [
+        [
+          {
+            "node": "Resolution:Remove Label From Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Resolution Confirmation": {
+      "main": [
+        []
+      ]
+    },
+    "Escalation:Respond to Discard Webhook": {
+      "main": [
+        [
+          {
+            "node": "Remove Label From Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "640bbaa2-4409-4840-90e7-ce3399c7c644",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fbb00e8c18efa4a4e5be5f90e2b9f8d3423f51c8b2e9bc7df59dd5011ea4efec"
+  },
+  "id": "Ju3vlIWHWCeLGEsv",
+  "tags": []
+}
