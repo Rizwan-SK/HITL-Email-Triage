@@ -9,17 +9,17 @@ The DART Engine is an enterprise-grade n8n automation designed to ingest, classi
 
 ## Architecture Overview
 
+
 ![workflow-overview](https://github.com/user-attachments/assets/f1c8ef0d-2bd4-433d-80a8-3ccd5dab9a14)
 
 
 This workflow is built as a white-label architecture. It is not hardcoded to a specific company or use case. By modifying the variables in the initial configuration node, the entire AI routing logic, tonality, and drafting parameters dynamically adapt to any organization's specific operational rules.
 
-### Key Components
-This workflow is built as a white-label architecture...
+#### NOTE: This workflow is built as a white-label architecture
+
 > [!IMPORTANT]
 > **Deployment Expectation:** This workflow is a **100% no-code** architecture. However, because it connects directly to enterprise tools, the initial setup requires generating API credentials for Google Workspace (OAuth2), Slack, and OpenAI. If you are comfortable navigating developer API dashboards, deployment takes roughly 15 minutes.
 
-## Architecture Overview
 
 This workflow is built as a white-label architecture. It is not hardcoded to a specific company or use case. By modifying the variables in the initial configuration node, the entire AI routing logic, tonality, and drafting parameters dynamically adapt to any organization's specific operational rules.
 
